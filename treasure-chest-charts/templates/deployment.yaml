@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "redis-wart-charts.fullname" . }}
+  name: {{ include "treasure-chest-charts.fullname" . }}
   labels:
-    {{- include "redis-wart-charts.labels" . | nindent 4 }}
+    {{- include "treasure-chest-charts.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "redis-wart-charts.selectorLabels" . | nindent 6 }}
+      {{- include "treasure-chest-charts.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "redis-wart-charts.selectorLabels" . | nindent 8 }}
+        {{- include "treasure-chest-charts.selectorLabels" . | nindent 8 }}
     spec:
     {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
     {{- end }}
-      serviceAccountName: {{ include "redis-wart-charts.serviceAccountName" . }}
+      serviceAccountName: {{ include "treasure-chest-charts.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:

@@ -1,4 +1,4 @@
 FROM centos
-COPY ./bin/wart_unix /
+COPY ./bin/chest_unix /
 
-ENTRYPOINT ["/wart_unix"]
+ENTRYPOINT ["/chest_unix"]

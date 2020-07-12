@@ -1,11 +1,11 @@
-# Default values for redis-wart-charts.
+# Default values for treasure-chest-charts.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
 replicaCount: 1
 
 image:
-  repository: jaeg/redis-wart
+  repository: jaeg/treasure-chest
   pullPolicy: Always
 
 imagePullSecrets: []
@@ -40,7 +40,7 @@ ingress:
     kubernetes.io/ingress.class: nginx
     kubernetes.io/tls-acme: "true"
   hosts:
-    - host: wart.local
+    - host: chest.local
       paths: ["/"]
   tls: []
   #  - secretName: chart-example-tls

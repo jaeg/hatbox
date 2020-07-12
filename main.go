@@ -20,10 +20,10 @@ var redisPassword = flag.String("redis-password", "", "the password for redis")
 var cluster = flag.String("cluster-name", "default", "name of cluster")
 var chestName = flag.String("chest-name", "", "the unique name of this chest")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
-var host = flag.Bool("host", false, "Allow this wart to be an http host.")
-var hostPort = flag.String("host-port", "9999", "HTTP port of wart.")
+var host = flag.Bool("host", false, "Allow this chest to be an http host.")
+var hostPort = flag.String("host-port", "9999", "HTTP port of chest.")
 var healthPort = flag.String("health-port", "8787", "Port to run health metrics on")
-var configFile = flag.String("config", "", "Config file with wart settings")
+var configFile = flag.String("config", "", "Config file with chest settings")
 
 func main() {
 	rand.Seed(time.Now().UnixNano())

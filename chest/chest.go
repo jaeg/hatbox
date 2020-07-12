@@ -37,7 +37,7 @@ const RUNNING = "running"
 
 var ctx = context.Background()
 
-//Chest main structure for wart
+//Chest main structure for chest
 type Chest struct {
 	RedisAddr       string
 	RedisPassword   string
@@ -50,7 +50,7 @@ type Chest struct {
 	shuttingDown    bool
 }
 
-//Create Creates a wart
+//Create Creates a chest
 func Create(configFile string, redisAddr string, redisPassword string, cluster string, chestName string, host bool, hostPort string, healthPort string) (*Chest, error) {
 	if configFile != "" {
 		fBytes, err := ioutil.ReadFile(configFile)
@@ -132,12 +132,12 @@ func generateRandomName(length int) (out string) {
 	return
 }
 
-//Shutdown Shutsdown the wart by safely stopping threads
+//Shutdown Shutsdown the chest by safely stopping threads
 func (w *Chest) Shutdown() {
 	w.shuttingDown = true
 }
 
-//IsEnabled Returns if the wart is enabled.
+//IsEnabled Returns if the chest is enabled.
 func IsEnabled(w *Chest) bool {
 	status := w.Client.HGet(ctx, w.Cluster+":Chests:"+w.ChestName, "Status").Val()
 	if w.shuttingDown || status == DISABLED {
