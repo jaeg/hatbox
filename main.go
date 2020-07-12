@@ -44,8 +44,9 @@ func main() {
 	if err == nil {
 		log.Info("Chest Name: ", w.ChestName)
 		log.Debug("Chest Opened")
-		//handle creating new threads.
+
 		for chest.IsEnabled(w) {
+			//Heart beat
 			w.Client.HSet(ctx, w.Cluster+":Chest:"+w.ChestName, "Heartbeat", time.Now().UnixNano())
 			time.Sleep(time.Second)
 		}
