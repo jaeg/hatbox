@@ -47,7 +47,9 @@ func main() {
 
 		for chest.IsEnabled(w) {
 			//Heart beat
-			w.Client.HSet(ctx, w.Cluster+":Chest:"+w.ChestName, "Heartbeat", time.Now().UnixNano())
+			w.Client.HSet(ctx, w.Cluster+":Chests:"+w.ChestName, "Heartbeat", time.Now().UnixNano())
+			w.RegisterFiles()
+			w.SyncFiles()
 			time.Sleep(time.Second)
 		}
 		log.Info("Shutting down.")
