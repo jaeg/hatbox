@@ -1,4 +1,4 @@
-module github.com/jaeg/treasure-chest
+module github.com/jaeg/treasurechest
 
 go 1.14
 
