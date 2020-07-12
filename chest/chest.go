@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -202,25 +203,30 @@ func (c *Chest) SyncFiles() {
 		keySplit := strings.Split(key, ":")
 
 		chestName := keySplit[2]
-		files := c.Client.HGetAll(ctx, key).Val()
-		for fileName, fileDate := range files {
-			if strings.Index(fileName, "<Local>") == -1 {
-				t, err := strconv.ParseInt(fileDate, 10, 0)
-				if err == nil {
-					if fileMap[fileName] != nil {
-						// If file is newer than in the map use it instead.
-						if t > fileMap[fileName].time {
-							fileMap[fileName].time = t
-							fileMap[fileName].chestName = chestName
+		chestHeartbeat, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+chestName, "Heartbeat").Int64()
+		//If the heart isn't beating don't try to sync with it.
+		if time.Now().UnixNano()-chestHeartbeat < int64(4*time.Second) {
+			files := c.Client.HGetAll(ctx, key).Val()
+			for fileName, fileDate := range files {
+				if strings.Index(fileName, "<Local>") == -1 {
+					t, err := strconv.ParseInt(fileDate, 10, 0)
+					if err == nil {
+						if fileMap[fileName] != nil {
+							// If file is newer than in the map use it instead.
+							if t > fileMap[fileName].time {
+								fileMap[fileName].time = t
+								fileMap[fileName].chestName = chestName
+							}
+						} else {
+							fileMap[fileName] = &fileInfo{chestName: chestName, time: t}
 						}
 					} else {
-						fileMap[fileName] = &fileInfo{chestName: chestName, time: t}
+						log.WithError(err).Error("Error getting local time from redis")
 					}
-				} else {
-					log.WithError(err).Error("Error getting local time from redis")
 				}
 			}
 		}
+
 	}
 
 	for path, info := range fileMap {
