@@ -44,7 +44,7 @@ func main() {
 	if err == nil {
 		log.Info("Chest Name: ", w.ChestName)
 		log.Debug("Chest Opened")
-
+		go w.HandleFileRequests()
 		for chest.IsEnabled(w) {
 			//Heart beat
 			w.Client.HSet(ctx, w.Cluster+":Chests:"+w.ChestName, "Heartbeat", time.Now().UnixNano())

@@ -156,6 +156,10 @@ func (c *Chest) RegisterFiles() {
 				return err
 			}
 
+			if path == "./contents" {
+				return nil
+			}
+
 			if c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Val() == "" {
 				//Brand new file
 				log.Info("File needs added ", path)
@@ -170,7 +174,7 @@ func (c *Chest) RegisterFiles() {
 						log.Info("File needs updated! ", path)
 						//If local time registered is older than the file then register this mod time to redis
 						c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path, info.ModTime().UnixNano())
-						c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+":<Local>", info.ModTime().UnixNano())
+						c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>", info.ModTime().UnixNano())
 					}
 				} else {
 					log.WithError(err).Error("Error getting local time from redis")
@@ -205,7 +209,7 @@ func (c *Chest) SyncFiles() {
 		chestName := keySplit[2]
 		chestHeartbeat, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+chestName, "Heartbeat").Int64()
 		//If the heart isn't beating don't try to sync with it.
-		if time.Now().UnixNano()-chestHeartbeat < int64(4*time.Second) {
+		if time.Now().UnixNano()-chestHeartbeat < int64(10*time.Second) {
 			files := c.Client.HGetAll(ctx, key).Val()
 			for fileName, fileDate := range files {
 				if strings.Index(fileName, "<Local>") == -1 {
@@ -216,6 +220,9 @@ func (c *Chest) SyncFiles() {
 							if t > fileMap[fileName].time {
 								fileMap[fileName].time = t
 								fileMap[fileName].chestName = chestName
+							} else if t == fileMap[fileName].time {
+								//We don't need to pull this
+								fileMap[fileName].chestName = c.ChestName
 							}
 						} else {
 							fileMap[fileName] = &fileInfo{chestName: chestName, time: t}
@@ -232,7 +239,81 @@ func (c *Chest) SyncFiles() {
 	for path, info := range fileMap {
 		if info.chestName != c.ChestName {
 			log.Info("Pull the file ", path, " from ", info.chestName)
+			c.Client.RPush(ctx, c.Cluster+":Chests:"+info.chestName+":FileQueue", path+":"+c.ChestName)
+			tries := 0
+			key := c.Cluster + ":Chests:" + c.ChestName + ":FileReturn:" + path
+			for {
+				val, _ := c.Client.Exists(ctx, key).Uint64()
+				if val == 1 {
+					break
+				}
+				if tries > 4 {
+					break
+				}
+				fmt.Println(val, key)
+				tries++
+
+				time.Sleep(time.Second * 3)
+			}
+			if tries > 4 {
+				log.Error("Gave up on " + key)
+				continue
+			}
+
+			log.Info("Got a file from " + info.chestName)
+			res, err := c.Client.HGetAll(ctx, c.Cluster+":Chests:"+c.ChestName+":FileReturn:"+path).Result()
+
+			if err != nil {
+				log.WithError(err).Error("Error getting file back")
+				continue
+			}
+			file, err := os.Create(path)
+			defer file.Close()
+			if err != nil {
+				log.WithError(err).Error("Error creating file")
+				continue
+			}
+			_, err = file.Write([]byte(res["data"]))
+			if err != nil {
+				log.WithError(err).Error("Error writing the file")
+				continue
+			}
+			fInfo, _ := file.Stat()
+			c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path, res["originTime"])
+			c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>", fInfo.ModTime().UnixNano())
+
+			c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName+":FileReturn:"+path)
 		}
+	}
+}
+
+func (c *Chest) HandleFileRequests() {
+	for {
+		res, err := c.Client.BLPop(ctx, time.Second, c.Cluster+":Chests:"+c.ChestName+":FileQueue").Result()
+
+		if err != nil {
+			//log.WithError(err).Error("Error getting file back")
+			continue
+		}
+
+		log.Info("Got a request to handle", res)
+		split := strings.Split(res[1], ":")
+		path := split[0]
+		destinationChest := split[1]
+
+		originTime, err := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Result()
+		if err != nil {
+			log.WithError(err).Error("Error getting origin time")
+			continue
+		}
+
+		b, err := ioutil.ReadFile(path)
+		if err != nil {
+			log.WithError(err).Error("Failed to open file")
+			continue
+		}
+
+		c.Client.HSet(ctx, c.Cluster+":Chests:"+destinationChest+":FileReturn:"+path, "originTime", originTime, "data", string(b))
 	}
 }
 
