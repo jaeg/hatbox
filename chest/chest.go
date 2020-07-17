@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,6 +53,7 @@ type Chest struct {
 	SecondsTillDead int
 	VMStopChan      chan func()
 	shuttingDown    bool
+	IP              string
 }
 type fileInfo struct {
 	chestName string
@@ -81,7 +83,7 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 	}
 	c := &Chest{RedisAddr: redisAddr, RedisPassword: redisPassword,
 		Cluster: cluster, ChestName: chestName,
-		Healthy: true, SecondsTillDead: 1}
+		Healthy: true, SecondsTillDead: 1, IP: getIPAddress()}
 
 	if c.RedisAddr == "" {
 		return nil, errors.New("no redis address provided")
@@ -98,7 +100,7 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 	if pongErr != nil && pong != "PONG" {
 		return nil, errors.New("redis failed ping")
 	}
-
+	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "IP", c.IP)
 	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "State", ONLINE)
 	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "Status", ENABLED)
 
@@ -135,6 +137,33 @@ func generateRandomName(length int) (out string) {
 	chars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 	for i := 0; i < length; i++ {
 		out += string(chars[rand.Intn(len(chars))])
+	}
+
+	return
+}
+
+func getIPAddress() (ip string) {
+	tt, err := net.Interfaces()
+	if err != nil {
+		panic(err)
+	}
+	for _, t := range tt {
+		aa, err := t.Addrs()
+		if err != nil {
+			panic(err)
+		}
+		for _, a := range aa {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			v4 := ipnet.IP.To4()
+			if v4 == nil || v4[0] == 127 { // loopback address
+				continue
+			}
+			ip = v4.To4().String()
+			fmt.Printf("%v\n", v4)
+		}
 	}
 
 	return
@@ -319,7 +348,11 @@ func (c *Chest) HandleFileRequests() {
 
 //Shutdown Shutsdown the chest by safely stopping threads
 func (c *Chest) Shutdown() {
+	log.Info("Shutting down requested")
 	c.shuttingDown = true
+	c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName)
+	c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents")
+
 }
 
 //IsEnabled Returns if the chest is enabled.

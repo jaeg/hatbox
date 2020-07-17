@@ -43,6 +43,7 @@ func main() {
 
 	if err == nil {
 		log.Info("Chest Name: ", w.ChestName)
+		log.Info("Chest IP: ", w.IP)
 		log.Debug("Chest Opened")
 		go w.HandleFileRequests()
 		for chest.IsEnabled(w) {
@@ -53,10 +54,7 @@ func main() {
 			time.Sleep(time.Second)
 		}
 		log.Info("Shutting down.")
-		if w.Client != nil {
-			defer w.Client.HSet(ctx, w.Cluster+":Chests:"+w.ChestName, "State", "offline")
-			defer log.Debug("Chest Closed")
-		}
+		defer w.Shutdown()
 	} else {
 		log.WithError(err).Error("Failed to start chest.")
 	}
