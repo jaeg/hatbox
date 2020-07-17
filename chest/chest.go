@@ -77,7 +77,7 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 	}
 
 	if len(chestName) == 0 {
-		chestName = generateRandomName(10)
+		chestName, _ = os.Hostname() //generateRandomName(10)
 	}
 	c := &Chest{RedisAddr: redisAddr, RedisPassword: redisPassword,
 		Cluster: cluster, ChestName: chestName,
