@@ -270,9 +270,9 @@ func (c *Chest) SyncFiles() {
 }
 
 //SyncFile syncs file in chest with redis
-func (c *Chest) SyncFile(path string) {
+func (c *Chest) SyncFile(path string) (found bool) {
 	keys := c.Client.Keys(ctx, c.Cluster+":Chests:*:Contents").Val()
-
+	found = false
 	fileMap := make(map[string]*fileInfo)
 	originTime, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Int64()
 	for i := range keys {
@@ -291,6 +291,7 @@ func (c *Chest) SyncFile(path string) {
 
 			t, err := strconv.ParseInt(fileDate, 10, 0)
 			if err == nil {
+				found = true
 				if fileMap[path] != nil {
 					// If file is newer than in the map use it instead.
 					if t > fileMap[path].time {
@@ -313,6 +314,8 @@ func (c *Chest) SyncFile(path string) {
 			c.pullFile(path, info)
 		}
 	}
+
+	return
 }
 
 func (c *Chest) pullFile(path string, info *fileInfo) error {
@@ -376,7 +379,10 @@ func (c *Chest) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 	if c.Healthy {
 		if r.Method == http.MethodGet {
 			path := strings.Replace(r.URL.Path, "/", "", 1)
-			c.SyncFile(path)
+			if !c.SyncFile(path) {
+				http.Error(w, "Yar, nothing here", http.StatusNotFound)
+				return
+			}
 
 			file, err := os.Open(path)
 			if err != nil {
