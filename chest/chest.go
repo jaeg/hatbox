@@ -104,6 +104,7 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 		return nil, errors.New("redis failed ping")
 	}
 	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "IP", c.IP)
+	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "Port", hostPort)
 	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "State", ONLINE)
 	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "Status", ENABLED)
 
@@ -222,14 +223,6 @@ func (c *Chest) RegisterFiles() {
 
 //SyncFiles syncs files in chest with redis
 func (c *Chest) SyncFiles() {
-	/*
-		Have a map of all files in the cluster and the chest with newest version of the file.
-		Put my files in this map.
-		Iterate over each chest in redis.
-		- For each file update map date and chest if file either doesn't exist or is newer than one in map
-		Iterate the map and copy the files from their respective chests to this chest.
-		The date of the file remains the same as the origin chest, but the local time changes to the time the file finishes being added.
-	*/
 	keys := c.Client.Keys(ctx, c.Cluster+":Chests:*:Contents").Val()
 
 	fileMap := make(map[string]*fileInfo)
@@ -252,9 +245,6 @@ func (c *Chest) SyncFiles() {
 							if t > fileMap[fileName].time {
 								fileMap[fileName].time = t
 								fileMap[fileName].chestName = chestName
-							} else if t == fileMap[fileName].time {
-								//We don't need to pull this
-								fileMap[fileName].chestName = c.ChestName
 							}
 						} else {
 							fileMap[fileName] = &fileInfo{chestName: chestName, time: t}
@@ -269,7 +259,9 @@ func (c *Chest) SyncFiles() {
 	}
 
 	for path, info := range fileMap {
-		if info.chestName != c.ChestName {
+		originTime, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Int64()
+
+		if info.chestName != c.ChestName && info.time != originTime {
 			log.Info("Pull the file ", path, " from ", info.chestName)
 			//HTTP request to the chest that has the file
 			c.pullFile(path, info)
@@ -282,7 +274,7 @@ func (c *Chest) SyncFile(path string) {
 	keys := c.Client.Keys(ctx, c.Cluster+":Chests:*:Contents").Val()
 
 	fileMap := make(map[string]*fileInfo)
-
+	originTime, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Int64()
 	for i := range keys {
 		key := keys[i]
 		keySplit := strings.Split(key, ":")
@@ -304,9 +296,6 @@ func (c *Chest) SyncFile(path string) {
 					if t > fileMap[path].time {
 						fileMap[path].time = t
 						fileMap[path].chestName = chestName
-					} else if t == fileMap[path].time {
-						//We don't need to pull this
-						fileMap[path].chestName = c.ChestName
 					}
 				} else {
 					fileMap[path] = &fileInfo{chestName: chestName, time: t}
@@ -318,7 +307,7 @@ func (c *Chest) SyncFile(path string) {
 	}
 
 	for path, info := range fileMap {
-		if info.chestName != c.ChestName {
+		if info.chestName != c.ChestName && info.time != originTime {
 			log.Info("Pull the file ", path, " from ", info.chestName)
 			//HTTP request to the chest that has the file
 			c.pullFile(path, info)
@@ -329,10 +318,15 @@ func (c *Chest) SyncFile(path string) {
 func (c *Chest) pullFile(path string, info *fileInfo) error {
 	ip, err := c.Client.HGet(ctx, c.Cluster+":Chests:"+info.chestName, "IP").Result()
 	if err != nil {
-		log.WithError(err).Error("Error getting location of chest")
+		log.WithError(err).Error("Error getting ip of chest")
 		return err
 	}
-	resp, err := http.Get("http://" + ip + "/" + path)
+	port, err := c.Client.HGet(ctx, c.Cluster+":Chests:"+info.chestName, "Port").Result()
+	if err != nil {
+		log.WithError(err).Error("Error getting port of chest")
+		return err
+	}
+	resp, err := http.Get("http://" + ip + ":" + port + "/" + path)
 
 	if err != nil {
 		log.WithError(err).Error("Error getting file from chest")
