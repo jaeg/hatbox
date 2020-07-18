@@ -21,7 +21,7 @@ var cluster = flag.String("cluster-name", "default", "name of cluster")
 var chestName = flag.String("chest-name", "", "the unique name of this chest")
 var healthInterval = flag.Duration("health-interval", 5, "Seconds delay for health check")
 var host = flag.Bool("host", false, "Allow this chest to be an http host.")
-var hostPort = flag.String("host-port", "9999", "HTTP port of chest.")
+var hostPort = flag.String("host-port", "80", "HTTP port of chest.")
 var healthPort = flag.String("health-port", "8787", "Port to run health metrics on")
 var configFile = flag.String("config", "", "Config file with chest settings")
 
@@ -45,7 +45,6 @@ func main() {
 		log.Info("Chest Name: ", w.ChestName)
 		log.Info("Chest IP: ", w.IP)
 		log.Debug("Chest Opened")
-		go w.HandleFileRequests()
 		for chest.IsEnabled(w) {
 			//Heart beat
 			w.Client.HSet(ctx, w.Cluster+":Chests:"+w.ChestName, "Heartbeat", time.Now().UnixNano())

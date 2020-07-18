@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -72,7 +73,9 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 				redisAddr = m["redis-address"].(string)
 				redisPassword = m["redis-password"].(string)
 				cluster = m["cluster"].(string)
-				chestName = m["name"].(string)
+				if m["name"] != nil {
+					chestName = m["name"].(string)
+				}
 				host = m["host"].(bool)
 			}
 		}
@@ -268,82 +271,93 @@ func (c *Chest) SyncFiles() {
 	for path, info := range fileMap {
 		if info.chestName != c.ChestName {
 			log.Info("Pull the file ", path, " from ", info.chestName)
-			c.Client.RPush(ctx, c.Cluster+":Chests:"+info.chestName+":FileQueue", path+":"+c.ChestName)
-			tries := 0
-			key := c.Cluster + ":Chests:" + c.ChestName + ":FileReturn:" + path
-			for {
-				val, _ := c.Client.Exists(ctx, key).Uint64()
-				if val == 1 {
-					break
-				}
-				if tries > 4 {
-					break
-				}
-				fmt.Println(val, key)
-				tries++
-
-				time.Sleep(time.Second * 3)
-			}
-			if tries > 4 {
-				log.Error("Gave up on " + key)
-				continue
-			}
-
-			log.Info("Got a file from " + info.chestName)
-			res, err := c.Client.HGetAll(ctx, c.Cluster+":Chests:"+c.ChestName+":FileReturn:"+path).Result()
-
-			if err != nil {
-				log.WithError(err).Error("Error getting file back")
-				continue
-			}
-			file, err := os.Create(path)
-			defer file.Close()
-			if err != nil {
-				log.WithError(err).Error("Error creating file")
-				continue
-			}
-			_, err = file.Write([]byte(res["data"]))
-			if err != nil {
-				log.WithError(err).Error("Error writing the file")
-				continue
-			}
-			fInfo, _ := file.Stat()
-			c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path, res["originTime"])
-			c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>", fInfo.ModTime().UnixNano())
-
-			c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName+":FileReturn:"+path)
+			//HTTP request to the chest that has the file
+			c.pullFile(path, info)
 		}
 	}
 }
 
-func (c *Chest) HandleFileRequests() {
-	for {
-		res, err := c.Client.BLPop(ctx, time.Second, c.Cluster+":Chests:"+c.ChestName+":FileQueue").Result()
+//SyncFile syncs file in chest with redis
+func (c *Chest) SyncFile(path string) {
+	keys := c.Client.Keys(ctx, c.Cluster+":Chests:*:Contents").Val()
 
-		if err != nil {
-			//log.WithError(err).Error("Error getting file back")
-			continue
+	fileMap := make(map[string]*fileInfo)
+
+	for i := range keys {
+		key := keys[i]
+		keySplit := strings.Split(key, ":")
+
+		chestName := keySplit[2]
+		chestHeartbeat, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+chestName, "Heartbeat").Int64()
+		//If the heart isn't beating don't try to sync with it.
+		if time.Now().UnixNano()-chestHeartbeat < int64(10*time.Second) {
+			fileDate, err := c.Client.HGet(ctx, key, path).Result()
+			if err != nil {
+				log.WithError(err).Error("Error getting file information from redis", chestName, path)
+				continue
+			}
+
+			t, err := strconv.ParseInt(fileDate, 10, 0)
+			if err == nil {
+				if fileMap[path] != nil {
+					// If file is newer than in the map use it instead.
+					if t > fileMap[path].time {
+						fileMap[path].time = t
+						fileMap[path].chestName = chestName
+					} else if t == fileMap[path].time {
+						//We don't need to pull this
+						fileMap[path].chestName = c.ChestName
+					}
+				} else {
+					fileMap[path] = &fileInfo{chestName: chestName, time: t}
+				}
+			} else {
+				log.WithError(err).Error("Error getting local time from redis")
+			}
 		}
-
-		log.Info("Got a request to handle", res)
-		split := strings.Split(res[1], ":")
-		path := split[0]
-		destinationChest := split[1]
-
-		originTime, err := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Result()
-		if err != nil {
-			log.WithError(err).Error("Error getting origin time")
-			continue
-		}
-
-		b, err := ioutil.ReadFile(path)
-		if err != nil {
-			log.WithError(err).Error("Failed to open file")
-			continue
-		}
-
-		c.Client.HSet(ctx, c.Cluster+":Chests:"+destinationChest+":FileReturn:"+path, "originTime", originTime, "data", string(b))
 	}
+
+	for path, info := range fileMap {
+		if info.chestName != c.ChestName {
+			log.Info("Pull the file ", path, " from ", info.chestName)
+			//HTTP request to the chest that has the file
+			c.pullFile(path, info)
+		}
+	}
+}
+
+func (c *Chest) pullFile(path string, info *fileInfo) error {
+	ip, err := c.Client.HGet(ctx, c.Cluster+":Chests:"+info.chestName, "IP").Result()
+	if err != nil {
+		log.WithError(err).Error("Error getting location of chest")
+		return err
+	}
+	resp, err := http.Get("http://" + ip + "/" + path)
+
+	if err != nil {
+		log.WithError(err).Error("Error getting file from chest")
+		return err
+	}
+	defer resp.Body.Close()
+	file, err := os.Create(path)
+	defer file.Close()
+	if err != nil {
+		log.WithError(err).Error("Error creating file")
+		return err
+	}
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		log.WithError(err).Error("Error writing file to disk")
+		return err
+	}
+
+	fInfo, _ := file.Stat()
+	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path, info.time)
+	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>", fInfo.ModTime().UnixNano())
+
+	c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName+":FileReturn:"+path)
+
+	return nil
 }
 
 //Shutdown Shutsdown the chest by safely stopping threads
@@ -364,16 +378,20 @@ func IsEnabled(c *Chest) bool {
 	return true
 }
 
-func (c *Chest) handleEndpoint(writer http.ResponseWriter, r *http.Request) {
+func (c *Chest) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 	if c.Healthy {
-		http.Error(writer, "Yar, nothing here", http.StatusNotFound)
+		if r.Method == http.MethodGet {
+			path := strings.Replace(r.URL.Path, "/", "", 1)
+			c.SyncFile(path)
 
-		/*
-			Look up list of healthy chests
-				- iterate list and check date of requested file.
-					- store date updated and node for determining which one to use later, replacing it if newer than current values
-				- If the node that has the newest file isn't me then get the file copied over to me.
-				- Respond with file.
-		*/
+			file, err := os.Open(path)
+			if err != nil {
+				log.WithError(err).Error("Error opening file")
+				http.Error(w, "Yar, nothing here", http.StatusNotFound)
+				return
+			}
+			defer file.Close()
+			io.Copy(w, file)
+		}
 	}
 }
