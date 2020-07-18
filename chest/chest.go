@@ -62,7 +62,7 @@ type fileInfo struct {
 }
 
 //Create Creates a chest
-func Create(configFile string, redisAddr string, redisPassword string, cluster string, chestName string, host bool, hostPort string, healthPort string) (*Chest, error) {
+func Create(configFile string, redisAddr string, redisPassword string, cluster string, chestName string, hostPort string, healthPort string) (*Chest, error) {
 	if configFile != "" {
 		fBytes, err := ioutil.ReadFile(configFile)
 		if err == nil {
@@ -76,7 +76,6 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 				if m["name"] != nil {
 					chestName = m["name"].(string)
 				}
-				host = m["host"].(bool)
 			}
 		}
 	}
@@ -108,10 +107,8 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "State", ONLINE)
 	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "Status", ENABLED)
 
-	if host {
-		http.HandleFunc("/", c.handleEndpoint)
-		go func() { http.ListenAndServe(":"+hostPort, nil) }()
-	}
+	http.HandleFunc("/", c.handleEndpoint)
+	go func() { http.ListenAndServe(":"+hostPort, nil) }()
 
 	// create `ServerMux`
 	mux := http.NewServeMux()
