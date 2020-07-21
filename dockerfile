@@ -1,5 +1,5 @@
 FROM centos
-COPY ./bin/chest_unix /
+COPY ./bin/hatbox_unix /
 RUN mkdir  /contents
 
-ENTRYPOINT ["/chest_unix"]
+ENTRYPOINT ["/hatbox_unix"]

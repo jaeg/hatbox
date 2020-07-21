@@ -1,4 +1,4 @@
-module github.com/jaeg/treasurechest
+module github.com/jaeg/hatbox
 
 go 1.14
 

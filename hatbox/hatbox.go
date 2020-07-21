@@ -1,4 +1,4 @@
-package chest
+package hatbox
 
 import (
 	"context"
@@ -43,12 +43,12 @@ const RUNNING = "running"
 
 var ctx = context.Background()
 
-//Chest main structure for chest
-type Chest struct {
+//Hatbox main structure for hatbox
+type Hatbox struct {
 	RedisAddr       string
 	RedisPassword   string
 	Cluster         string
-	ChestName       string
+	HatboxName       string
 	Client          *redis.Client
 	Healthy         bool
 	SecondsTillDead int
@@ -57,12 +57,12 @@ type Chest struct {
 	IP              string
 }
 type fileInfo struct {
-	chestName string
+	hatboxName string
 	time      int64
 }
 
-//Create Creates a chest
-func Create(configFile string, redisAddr string, redisPassword string, cluster string, chestName string, hostPort string, healthPort string) (*Chest, error) {
+//Create Creates a hatbox
+func Create(configFile string, redisAddr string, redisPassword string, cluster string, hatboxName string, hostPort string, healthPort string) (*Hatbox, error) {
 	if configFile != "" {
 		fBytes, err := ioutil.ReadFile(configFile)
 		if err == nil {
@@ -74,17 +74,17 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 				redisPassword = m["redis-password"].(string)
 				cluster = m["cluster"].(string)
 				if m["name"] != nil {
-					chestName = m["name"].(string)
+					hatboxName = m["name"].(string)
 				}
 			}
 		}
 	}
 
-	if len(chestName) == 0 {
-		chestName, _ = os.Hostname() //generateRandomName(10)
+	if len(hatboxName) == 0 {
+		hatboxName, _ = os.Hostname() //generateRandomName(10)
 	}
-	c := &Chest{RedisAddr: redisAddr, RedisPassword: redisPassword,
-		Cluster: cluster, ChestName: chestName,
+	c := &Hatbox{RedisAddr: redisAddr, RedisPassword: redisPassword,
+		Cluster: cluster, HatboxName: hatboxName,
 		Healthy: true, SecondsTillDead: 1, IP: getIPAddress()}
 
 	if c.RedisAddr == "" {
@@ -102,10 +102,10 @@ func Create(configFile string, redisAddr string, redisPassword string, cluster s
 	if pongErr != nil && pong != "PONG" {
 		return nil, errors.New("redis failed ping")
 	}
-	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "IP", c.IP)
-	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "Port", hostPort)
-	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "State", ONLINE)
-	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName, "Status", ENABLED)
+	c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName, "IP", c.IP)
+	c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName, "Port", hostPort)
+	c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName, "State", ONLINE)
+	c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName, "Status", ENABLED)
 
 	http.HandleFunc("/", c.handleEndpoint)
 	go func() { http.ListenAndServe(":"+hostPort, nil) }()
@@ -171,14 +171,14 @@ func getIPAddress() (ip string) {
 }
 
 //LookUpFile looks up the file in redis to see has the newest copy
-func (c *Chest) LookUpFile(path string) {
+func (c *Hatbox) LookUpFile(path string) {
 
 }
 
-//RegisterFiles registers files in chest to redis
-func (c *Chest) RegisterFiles() {
-	// Iterate over files in the "/chest" folder
-	// - In redis update Cluster:Chests:ChestName:Contents has with date file was updated and name/path.
+//RegisterFiles registers files in hatbox to redis
+func (c *Hatbox) RegisterFiles() {
+	// Iterate over files in the "/hatbox" folder
+	// - In redis update Cluster:Hatboxes:HatboxName:Contents has with date file was updated and name/path.
 
 	err := filepath.Walk("./contents",
 		func(path string, info os.FileInfo, err error) error {
@@ -190,21 +190,21 @@ func (c *Chest) RegisterFiles() {
 				return nil
 			}
 
-			if c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Val() == "" {
+			if c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path).Val() == "" {
 				//Brand new file
 				log.Info("File needs added ", path)
-				c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path, info.ModTime().UnixNano())
-				c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>", info.ModTime().UnixNano())
+				c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path, info.ModTime().UnixNano())
+				c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path+"<Local>", info.ModTime().UnixNano())
 			} else {
 				//Get the local time I registered this file
-				localTimeVal := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>").Val()
+				localTimeVal := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path+"<Local>").Val()
 				localTime, err := strconv.ParseInt(localTimeVal, 10, 0)
 				if err == nil {
 					if localTime < info.ModTime().UnixNano() {
 						log.Info("File needs updated! ", path)
 						//If local time registered is older than the file then register this mod time to redis
-						c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path, info.ModTime().UnixNano())
-						c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>", info.ModTime().UnixNano())
+						c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path, info.ModTime().UnixNano())
+						c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path+"<Local>", info.ModTime().UnixNano())
 					}
 				} else {
 					log.WithError(err).Error("Error getting local time from redis")
@@ -218,9 +218,9 @@ func (c *Chest) RegisterFiles() {
 	}
 }
 
-//SyncFiles syncs files in chest with redis
-func (c *Chest) SyncFiles() {
-	keys := c.Client.Keys(ctx, c.Cluster+":Chests:*:Contents").Val()
+//SyncFiles syncs files in hatbox with redis
+func (c *Hatbox) SyncFiles() {
+	keys := c.Client.Keys(ctx, c.Cluster+":Hatboxes:*:Contents").Val()
 
 	fileMap := make(map[string]*fileInfo)
 
@@ -228,10 +228,10 @@ func (c *Chest) SyncFiles() {
 		key := keys[i]
 		keySplit := strings.Split(key, ":")
 
-		chestName := keySplit[2]
-		chestHeartbeat, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+chestName, "Heartbeat").Int64()
+		hatboxName := keySplit[2]
+		hatboxHeartbeat, _ := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+hatboxName, "Heartbeat").Int64()
 		//If the heart isn't beating don't try to sync with it.
-		if time.Now().UnixNano()-chestHeartbeat < int64(10*time.Second) {
+		if time.Now().UnixNano()-hatboxHeartbeat < int64(10*time.Second) {
 			files := c.Client.HGetAll(ctx, key).Val()
 			for fileName, fileDate := range files {
 				if strings.Index(fileName, "<Local>") == -1 {
@@ -241,10 +241,10 @@ func (c *Chest) SyncFiles() {
 							// If file is newer than in the map use it instead.
 							if t > fileMap[fileName].time {
 								fileMap[fileName].time = t
-								fileMap[fileName].chestName = chestName
+								fileMap[fileName].hatboxName = hatboxName
 							}
 						} else {
-							fileMap[fileName] = &fileInfo{chestName: chestName, time: t}
+							fileMap[fileName] = &fileInfo{hatboxName: hatboxName, time: t}
 						}
 					} else {
 						log.WithError(err).Error("Error getting local time from redis")
@@ -256,33 +256,33 @@ func (c *Chest) SyncFiles() {
 	}
 
 	for path, info := range fileMap {
-		originTime, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Int64()
+		originTime, _ := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path).Int64()
 
-		if info.chestName != c.ChestName && info.time != originTime {
-			log.Info("Pull the file ", path, " from ", info.chestName)
-			//HTTP request to the chest that has the file
+		if info.hatboxName != c.HatboxName && info.time != originTime {
+			log.Info("Pull the file ", path, " from ", info.hatboxName)
+			//HTTP request to the hatbox that has the file
 			c.pullFile(path, info)
 		}
 	}
 }
 
-//SyncFile syncs file in chest with redis
-func (c *Chest) SyncFile(path string) (found bool) {
-	keys := c.Client.Keys(ctx, c.Cluster+":Chests:*:Contents").Val()
+//SyncFile syncs file in hatbox with redis
+func (c *Hatbox) SyncFile(path string) (found bool) {
+	keys := c.Client.Keys(ctx, c.Cluster+":Hatboxes:*:Contents").Val()
 	found = false
 	fileMap := make(map[string]*fileInfo)
-	originTime, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path).Int64()
+	originTime, _ := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path).Int64()
 	for i := range keys {
 		key := keys[i]
 		keySplit := strings.Split(key, ":")
 
-		chestName := keySplit[2]
-		chestHeartbeat, _ := c.Client.HGet(ctx, c.Cluster+":Chests:"+chestName, "Heartbeat").Int64()
+		hatboxName := keySplit[2]
+		hatboxHeartbeat, _ := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+hatboxName, "Heartbeat").Int64()
 		//If the heart isn't beating don't try to sync with it.
-		if time.Now().UnixNano()-chestHeartbeat < int64(10*time.Second) {
+		if time.Now().UnixNano()-hatboxHeartbeat < int64(10*time.Second) {
 			fileDate, err := c.Client.HGet(ctx, key, path).Result()
 			if err != nil {
-				log.WithError(err).Error("Error getting file information from redis", chestName, path)
+				log.WithError(err).Error("Error getting file information from redis", hatboxName, path)
 				continue
 			}
 
@@ -293,10 +293,10 @@ func (c *Chest) SyncFile(path string) (found bool) {
 					// If file is newer than in the map use it instead.
 					if t > fileMap[path].time {
 						fileMap[path].time = t
-						fileMap[path].chestName = chestName
+						fileMap[path].hatboxName = hatboxName
 					}
 				} else {
-					fileMap[path] = &fileInfo{chestName: chestName, time: t}
+					fileMap[path] = &fileInfo{hatboxName: hatboxName, time: t}
 				}
 			} else {
 				log.WithError(err).Error("Error getting local time from redis")
@@ -305,9 +305,9 @@ func (c *Chest) SyncFile(path string) (found bool) {
 	}
 
 	for path, info := range fileMap {
-		if info.chestName != c.ChestName && info.time != originTime {
-			log.Info("Pull the file ", path, " from ", info.chestName)
-			//HTTP request to the chest that has the file
+		if info.hatboxName != c.HatboxName && info.time != originTime {
+			log.Info("Pull the file ", path, " from ", info.hatboxName)
+			//HTTP request to the hatbox that has the file
 			c.pullFile(path, info)
 		}
 	}
@@ -315,21 +315,21 @@ func (c *Chest) SyncFile(path string) (found bool) {
 	return
 }
 
-func (c *Chest) pullFile(path string, info *fileInfo) error {
-	ip, err := c.Client.HGet(ctx, c.Cluster+":Chests:"+info.chestName, "IP").Result()
+func (c *Hatbox) pullFile(path string, info *fileInfo) error {
+	ip, err := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+info.hatboxName, "IP").Result()
 	if err != nil {
-		log.WithError(err).Error("Error getting ip of chest")
+		log.WithError(err).Error("Error getting ip of hatbox")
 		return err
 	}
-	port, err := c.Client.HGet(ctx, c.Cluster+":Chests:"+info.chestName, "Port").Result()
+	port, err := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+info.hatboxName, "Port").Result()
 	if err != nil {
-		log.WithError(err).Error("Error getting port of chest")
+		log.WithError(err).Error("Error getting port of hatbox")
 		return err
 	}
 	resp, err := http.Get("http://" + ip + ":" + port + "/" + path)
 
 	if err != nil {
-		log.WithError(err).Error("Error getting file from chest")
+		log.WithError(err).Error("Error getting file from hatbox")
 		return err
 	}
 	defer resp.Body.Close()
@@ -346,33 +346,33 @@ func (c *Chest) pullFile(path string, info *fileInfo) error {
 	}
 
 	fInfo, _ := file.Stat()
-	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path, info.time)
-	c.Client.HSet(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents", path+"<Local>", fInfo.ModTime().UnixNano())
+	c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path, info.time)
+	c.Client.HSet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents", path+"<Local>", fInfo.ModTime().UnixNano())
 
-	c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName+":FileReturn:"+path)
+	c.Client.Del(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":FileReturn:"+path)
 
 	return nil
 }
 
-//Shutdown Shutsdown the chest by safely stopping threads
-func (c *Chest) Shutdown() {
+//Shutdown Shutsdown the hatbox by safely stopping threads
+func (c *Hatbox) Shutdown() {
 	log.Info("Shutting down requested")
 	c.shuttingDown = true
-	c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName)
-	c.Client.Del(ctx, c.Cluster+":Chests:"+c.ChestName+":Contents")
+	c.Client.Del(ctx, c.Cluster+":Hatboxes:"+c.HatboxName)
+	c.Client.Del(ctx, c.Cluster+":Hatboxes:"+c.HatboxName+":Contents")
 
 }
 
-//IsEnabled Returns if the chest is enabled.
-func IsEnabled(c *Chest) bool {
-	status := c.Client.HGet(ctx, c.Cluster+":Chests:"+c.ChestName, "Status").Val()
+//IsEnabled Returns if the hatbox is enabled.
+func IsEnabled(c *Hatbox) bool {
+	status := c.Client.HGet(ctx, c.Cluster+":Hatboxes:"+c.HatboxName, "Status").Val()
 	if c.shuttingDown || status == DISABLED {
 		return false
 	}
 	return true
 }
 
-func (c *Chest) handleEndpoint(w http.ResponseWriter, r *http.Request) {
+func (c *Hatbox) handleEndpoint(w http.ResponseWriter, r *http.Request) {
 	if c.Healthy {
 		if r.Method == http.MethodGet {
 			path := strings.Replace(r.URL.Path, "/", "", 1)

@@ -1,11 +1,11 @@
-# treasure-chest
+# hatbox
 
 ## Description
-Treasure Chest is a scalable and self syncing CDN.  All files in the `contents` folder will be kept synchronized with other chests in the namespace.  When a new chest is introduced with no files it'll be automatically populated by the rest of the cluster.
+Hatbox is a scalable and self syncing CDN.  All files in the `contents` folder will be kept synchronized with other hatboxs in the namespace.  When a new hatbox is introduced with no files it'll be automatically populated by the rest of the cluster.
 
 ## Runtime params
 - cluster-name - name of cluster   
-- chest-name - name of the chest   
+- hatbox-name - name of the hatbox   
 - redis-address - address to redis server  
 - redis-password - password for redis server   
 - run-now - run registered scripts on this wart immediately
@@ -22,12 +22,12 @@ Requires a version of go that supports go.mod
 - Build and run it
   - `make run`
 - You can get started using an example config as such
-  -  `./bin/chest --config chest.config`
+  -  `./bin/hatbox --config hatbox.config`
 - Or you can pass in through runtime params  
-  - `./bin/chest --redis-address=<address> --redis-password=<password> --chest-name=chest`
+  - `./bin/hatbox --redis-address=<address> --redis-password=<password> --hatbox-name=hatbox`
 - Or run through a docker container
-  - `docker run jaeg/treasure-chest:latest --redis-address=<address> --redis-password=<password> --chest-name=chest`
+  - `docker run jaeg/hatbox:latest --redis-address=<address> --redis-password=<password> --hatbox-name=hatbox`
 
 ## Routes
 GET /< filepath > 
-- Returns the newest version of the requested file.  If the chest that got asked for the file either doesn't have it or is out of date it syncs the file.
+- Returns the newest version of the requested file.  If the hatbox that got asked for the file either doesn't have it or is out of date it syncs the file.
